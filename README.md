@@ -12,8 +12,7 @@ on:
     branches: [main]
   workflow_dispatch: {}
 permissions:
-  contents: read
-  id-token: write          # required: the Action proves who it is with GitHub's OIDC token
+  id-token: write          # the only permission it needs: the Action proves who it is with GitHub's OIDC token
 jobs:
   sync:
     runs-on: ubuntu-latest
