@@ -1,0 +1,42 @@
+name: Inferra sync-env
+description: >-
+  Sends a GitHub Environment's variables and secrets to the Inferra space of
+  the same name. Authenticates with GitHub's OIDC token: no Inferra token is
+  stored in GitHub.
+branding:
+  icon: upload-cloud
+  color: blue
+
+inputs:
+  space:
+    description: The Inferra space (= the GitHub Environment this job runs in).
+    required: true
+  variables:
+    description: "The environment's variables: pass `${{ toJSON(vars) }}`."
+    required: false
+    default: "{}"
+  secrets:
+    description: "The environment's secrets: pass `${{ toJSON(secrets) }}`."
+    required: false
+    default: "{}"
+  api-url:
+    description: The Inferra API.
+    required: false
+    default: https://api.inferralab.com
+  audience:
+    description: The OIDC audience Inferra expects.
+    required: false
+    default: inferra
+
+runs:
+  using: composite
+  steps:
+    - name: Send variables and secrets to Inferra
+      shell: bash
+      env:
+        INFERRA_SPACE: ${{ inputs.space }}
+        INFERRA_VARS: ${{ inputs.variables }}
+        INFERRA_SECRETS: ${{ inputs.secrets }}
+        INFERRA_API: ${{ inputs.api-url }}
+        INFERRA_AUDIENCE: ${{ inputs.audience }}
+      run: ${{ github.action_path }}/sync.sh
