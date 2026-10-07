@@ -12,11 +12,11 @@ inputs:
     description: The Inferra space (= the GitHub Environment this job runs in).
     required: true
   variables:
-    description: "The environment's variables: pass `${{ toJSON(vars) }}`."
+    description: "The environment's variables, as JSON: pass toJSON(vars) from the workflow (see README)."
     required: false
     default: "{}"
   secrets:
-    description: "The environment's secrets: pass `${{ toJSON(secrets) }}`."
+    description: "The environment's secrets, as JSON: pass toJSON(secrets) from the workflow (see README)."
     required: false
     default: "{}"
   api-url:
