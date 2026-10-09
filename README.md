@@ -23,7 +23,7 @@ jobs:
         space: [prod, stage, preview]   # Use the spaces from .inferra/org.yaml.
     environment: ${{ matrix.space }}
     steps:
-      - uses: inferra-ai/sync-env@0c9b8a2552069f9b3312ab07238970965c9829c5 # v1.0.1
+      - uses: inferra-ai/sync-env@8f6330a7af3dd02ffb6c103081d43050804b3b38 # v1.0.2
         with:
           space: ${{ matrix.space }}
           variables: ${{ toJSON(vars) }}
