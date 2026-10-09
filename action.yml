@@ -1,6 +1,6 @@
 name: Inferra sync-env
 description: >-
-  Sends a GitHub Environment's variables and secrets to the Inferra space of
+  Sends a GitHub Environment's variables and selected secrets to the Inferra space of
   the same name. Authenticates with GitHub's OIDC token: no Inferra token is
   stored in GitHub.
 branding:
@@ -16,7 +16,7 @@ inputs:
     required: false
     default: "{}"
   secrets:
-    description: "The environment's secrets, as JSON: pass toJSON(secrets) from the workflow (see README)."
+    description: 'Selected secrets as a JSON object, e.g. {"DATABASE_URL": ${{ toJSON(secrets.DATABASE_URL) }}} (see README). Empty selected values are rejected; {} clears synced secrets.'
     required: false
     default: "{}"
   api-url:
