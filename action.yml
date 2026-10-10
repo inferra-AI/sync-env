@@ -16,7 +16,7 @@ inputs:
     required: false
     default: "{}"
   secrets:
-    description: 'Selected secrets as a JSON object, e.g. {"DATABASE_URL": ${{ toJSON(secrets.DATABASE_URL) }}} (see README). Empty selected values are rejected; {} clears synced secrets.'
+    description: 'Selected secrets as a JSON object built in the workflow with toJSON on each secret (see README). Empty selected values are rejected; {} clears synced secrets.'
     required: false
     default: "{}"
   api-url:
