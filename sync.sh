@@ -22,20 +22,21 @@ if ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$secrets_json"; then
   exit 1
 fi
 
-# Report names only. Non-string values are a workflow mistake: refuse
+# A secret listed in the workflow but not set in this Environment arrives as
+# null (toJSON of an unset secret) or "". Skip it (names only in the warning):
+# sending it would store an empty value, and leaving it out mirrors GitHub,
+# where the secret doesn't exist.
+empty_secrets=$(jq -c '[to_entries[] | select(.value == null or .value == "") | .key]' <<<"$secrets_json")
+if [[ "$empty_secrets" != '[]' ]]; then
+  echo "::warning::Not set in this GitHub Environment, skipped: $empty_secrets"
+  secrets_json=$(jq -c 'with_entries(select(.value != null and .value != ""))' <<<"$secrets_json")
+fi
+# Report names only. Other non-string values are a workflow mistake: refuse
 # the whole sync before it can change anything in Inferra.
 invalid_secrets=$(jq -c '[to_entries[] | select(.value | type != "string") | .key]' <<<"$secrets_json")
 if [[ "$invalid_secrets" != '[]' ]]; then
   echo "::error::Selected secrets must have string values: $invalid_secrets"
   exit 1
-fi
-# A secret listed in the workflow but not set in this Environment arrives as
-# "". Skip it (names only in the warning): sending "" would store an empty
-# value, and leaving it out mirrors GitHub, where the secret doesn't exist.
-empty_secrets=$(jq -c '[to_entries[] | select(.value == "") | .key]' <<<"$secrets_json")
-if [[ "$empty_secrets" != '[]' ]]; then
-  echo "::warning::Not set in this GitHub Environment, skipped: $empty_secrets"
-  secrets_json=$(jq -c 'with_entries(select(.value != ""))' <<<"$secrets_json")
 fi
 
 # The OIDC token for Inferra.

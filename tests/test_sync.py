@@ -74,10 +74,19 @@ class SyncTests(unittest.TestCase):
 
     def test_non_string_selected_secrets_report_only_names(self):
         self.assert_rejected(
-            '{"NULL_KEY":null,"NUMBER_KEY":42,"OBJECT_KEY":{"hidden":"value"}}',
+            '{"NUMBER_KEY":42,"OBJECT_KEY":{"hidden":"value"}}',
             '::error::Selected secrets must have string values: '
-            '["NULL_KEY","NUMBER_KEY","OBJECT_KEY"]',
+            '["NUMBER_KEY","OBJECT_KEY"]',
         )
+
+    def test_unset_selected_secrets_arrive_as_null_and_are_skipped(self):
+        # toJSON(secrets.X) is null when X isn't set in this Environment.
+        result = self.run_sync('{"UNSET":null,"VALID":"must-not-appear"}')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('::warning::Not set in this GitHub Environment, skipped: ["UNSET"]', result.stdout)
+        self.assertNotIn("must-not-appear", result.stdout + result.stderr)
+        payload = json.loads((self.root / "payload.json").read_text())
+        self.assertEqual(payload["secrets"], {"VALID": "must-not-appear"})
 
     def test_invalid_json_is_not_printed(self):
         result = self.run_sync('{"KEY":"do-not-print"')
