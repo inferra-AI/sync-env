@@ -20,6 +20,7 @@ args = sys.argv[1:]
 with (root / "requests").open("a") as log:
     log.write("PUT\\n" if "PUT" in args else "OIDC\\n")
 if "PUT" in args:
+    (root / "url").write_text(args[args.index("PUT") + 1])
     (root / "payload.json").write_text(sys.stdin.read())
     Path(args[args.index("-o") + 1]).write_text(
         '{"space":"prod","variables":1,"secrets":2,"restarted":0}')
@@ -38,7 +39,7 @@ class SyncTests(unittest.TestCase):
         curl.write_text(CURL_STUB)
         curl.chmod(0o755)
 
-    def run_sync(self, secrets):
+    def run_sync(self, secrets, api="https://api.example.invalid"):
         env = dict(os.environ)
         env.update(
             PATH=str(self.root) + os.pathsep + env["PATH"],
@@ -46,7 +47,7 @@ class SyncTests(unittest.TestCase):
             INFERRA_SPACE="prod",
             INFERRA_VARS='{"LOG_LEVEL":"info"}',
             INFERRA_SECRETS=secrets,
-            INFERRA_API="https://api.example.invalid",
+            INFERRA_API=api,
             ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example.invalid?job=1",
             ACTIONS_ID_TOKEN_REQUEST_TOKEN="dummy-request-token",
         )
@@ -115,6 +116,19 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(
             json.loads((self.root / "payload.json").read_text())["secrets"], {}
+        )
+
+    def test_empty_api_url_means_production(self):
+        result = self.run_sync("{}", api="")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            (self.root / "url").read_text(), "https://api.inferralab.com/v1/github/env"
+        )
+
+    def test_explicit_api_url_is_used(self):
+        self.run_sync("{}", api="https://api.dev.example.invalid/")
+        self.assertEqual(
+            (self.root / "url").read_text(), "https://api.dev.example.invalid/v1/github/env"
         )
 
 

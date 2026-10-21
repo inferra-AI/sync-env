@@ -6,6 +6,9 @@
 # GitHub's published keys. Nothing here stores or prints a credential.
 set -euo pipefail
 
+# An empty api-url means the production API.
+INFERRA_API=${INFERRA_API:-https://api.inferralab.com}
+
 : "${INFERRA_SPACE:?space is required}"
 if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
   echo "::error::No OIDC token available. Add 'permissions: id-token: write' to the workflow or job."

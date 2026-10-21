@@ -32,7 +32,9 @@ jobs:
               "DATABASE_URL": ${{ toJSON(secrets.DATABASE_URL) }},
               "PAYMENTS_API_KEY": ${{ toJSON(secrets.PAYMENTS_API_KEY) }}
             }
-          # api-url: https://api.dev.inferralab.com   # for a non-production Inferra
+          # Production needs no api-url. For a non-production Inferra, set the organisation
+          # or repo variable INFERRA_API_URL and pass it; an empty value means production:
+          # api-url: ${{ vars.INFERRA_API_URL }}
 ```
 
 Only listed secrets leave GitHub. Use `toJSON` for each selected value so
