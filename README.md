@@ -39,6 +39,8 @@ jobs:
           # api-url: ${{ vars.INFERRA_API_URL }}
 ```
 
+`variables: ${{ toJSON(vars) }}` includes organisation and repository variables. Names Inferra sets itself (`PORT`, `INFERRA_*`, `KUBERNETES_*`, so also `INFERRA_API_URL`) are left out, and the run log lists them by name.
+
 Only listed secrets leave GitHub. Use `toJSON` for each selected value so
 quotes, newlines and backslashes remain valid JSON. A listed secret that isn't
 set in one Environment (say `STRIPE_KEY` only in `prod`) is skipped there with
