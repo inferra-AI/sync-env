@@ -20,7 +20,7 @@ inputs:
     required: false
     default: "{}"
   api-url:
-    description: The Inferra API. An empty value means the default, so a workflow can pass ${{ vars.INFERRA_API_URL }}.
+    description: The Inferra API. An empty value means the default, so a workflow can pass the INFERRA_API_URL variable even where it is not set.
     required: false
     default: https://api.inferralab.com
   audience:

@@ -30,6 +30,15 @@ else:
 '''
 
 
+class ActionManifestTests(unittest.TestCase):
+    def test_inputs_contain_no_expressions(self):
+        # GitHub evaluates ${{ }} even in an input's description, and only
+        # inputs/github/runner contexts exist there: vars.X fails the whole job.
+        manifest = (SCRIPT.parent / "action.yml").read_text()
+        before_runs = manifest.split("\nruns:", 1)[0]
+        self.assertNotIn("${{", before_runs)
+
+
 class SyncTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
