@@ -175,18 +175,18 @@ class SyncTests(unittest.TestCase):
         self.assertIn("N19", result.stdout)
         self.assertNotIn("N20", result.stdout)
 
-    def test_error_response_prints_only_status_and_a_safe_detail(self):
-        body = json.dumps({"title": "Bad Request", "detail": "SENTINEL-secret\n::error::injected <b>x</b>" + "y" * 500,
-                           "secrets": {"K": "SENTINEL-value"}, "extra": "SENTINEL-extra"})
-        result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body, "SYNC_TEST_CODE": "400"})
-        self.assertNotEqual(result.returncode, 0)
-        text = result.stdout + result.stderr
-        self.assertIn("(HTTP 400): Bad Request - ", text)
-        self.assertNotIn("SENTINEL-value", text)
-        self.assertNotIn("SENTINEL-extra", text)
-        self.assertNotIn("<b>", text)
-        self.assertEqual(text.count("::error::"), 1)
-        self.assertLess(len(text), 400)
+    def test_error_response_prints_fixed_text_only(self):
+        for code, fragment in (("400", "invalid"), ("401", "authentication"), ("403", "authentication"),
+                               ("409", "conflicts"), ("413", "too large"), ("503", "server error"), ("418", "unexpected")):
+            body = json.dumps({"title": "SENTINEL-title", "detail": "SENTINEL-secret-123",
+                               "secrets": {"K": "SENTINEL-value"}})
+            result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body, "SYNC_TEST_CODE": code})
+            self.assertNotEqual(result.returncode, 0)
+            text = result.stdout + result.stderr
+            self.assertIn("(HTTP %s): " % code, text)
+            self.assertIn(fragment, text)
+            self.assertNotIn("SENTINEL", text)
+            self.assertEqual(text.count("::error::"), 1)
 
     def test_non_json_error_body_is_not_echoed(self):
         result = self.run_sync("{}", extra={"SYNC_TEST_BODY": "SENTINEL-html-page", "SYNC_TEST_CODE": "502"})

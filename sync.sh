@@ -61,13 +61,21 @@ trap 'rm -f "$out"' EXIT
 code=$(curl -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
   -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" --data-binary @- <<<"$body")
 
-# Nothing from the response body is echoed raw: only a numeric status, and
-# strings reduced to a safe alphabet and length. A response can carry anything.
-safe='gsub("[^A-Za-z0-9 ._,;()/'"'"'-]"; "") | .[0:200]'
+# Nothing from an error response is ever printed: its text could carry a
+# value. Only the numeric status and a fixed sentence per status.
 if [[ "$code" != 2* ]]; then
   [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
-  explanation=$(jq -r "[(.title // empty), (.detail // empty)] | map(select(type == \"string\") | $safe) | join(\" - \")" "$out" 2>/dev/null || true)
-  echo "::error::Inferra refused the sync (HTTP $code): ${explanation:-unknown error}"
+  case "$code" in
+    400|422) why="the request was invalid; check the variable and secret names and sizes" ;;
+    401|403) why="authentication failed; check 'permissions: id-token: write', the Environment name, and that this repository is an installed Inferra org" ;;
+    404) why="the space or repository was not found; check the Environment name matches a space" ;;
+    409) why="the sync conflicts with current state (an older or repeated run, or a value managed elsewhere)" ;;
+    413) why="the request is too large" ;;
+    429) why="too many syncs; retry in a minute" ;;
+    5??) why="Inferra had a server error; re-run the workflow" ;;
+    *) why="unexpected response" ;;
+  esac
+  echo "::error::Inferra refused the sync (HTTP $code): $why."
   exit 1
 fi
 summary=$(jq -r --arg space "$INFERRA_SPACE" '"Synced to space \($space): \(.variables | numbers) variables, \(.secrets | numbers) secrets\(if (.restarted | numbers) > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || true)
