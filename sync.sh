@@ -63,3 +63,9 @@ if [[ "$code" != 2* ]]; then
   exit 1
 fi
 jq -r '"Synced to space \(.space): \(.variables) variables, \(.secrets) secrets\(if .restarted > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || echo "Synced."
+# One owner per secret: names Inferra did not overwrite because they were set
+# in Inferra (names only).
+conflicts=$(jq -c '(.conflicts // []) | select(length > 0)' "$out" 2>/dev/null || true)
+if [[ -n "$conflicts" ]]; then
+  echo "::warning::Not overwritten, already set in Inferra: $conflicts. Run 'inferra secrets rm APP NAME' to let GitHub own it, or remove it from this workflow's secrets."
+fi
