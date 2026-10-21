@@ -20,7 +20,7 @@ inputs:
     required: false
     default: "{}"
   api-url:
-    description: The Inferra API.
+    description: The Inferra API. An empty value means the default, so a workflow can pass ${{ vars.INFERRA_API_URL }}.
     required: false
     default: https://api.inferralab.com
   audience:
@@ -37,6 +37,6 @@ runs:
         INFERRA_SPACE: ${{ inputs.space }}
         INFERRA_VARS: ${{ inputs.variables }}
         INFERRA_SECRETS: ${{ inputs.secrets }}
-        INFERRA_API: ${{ inputs.api-url }}
+        INFERRA_API: ${{ inputs.api-url || 'https://api.inferralab.com' }}
         INFERRA_AUDIENCE: ${{ inputs.audience }}
       run: ${{ github.action_path }}/sync.sh

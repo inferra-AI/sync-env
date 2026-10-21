@@ -20,10 +20,11 @@ args = sys.argv[1:]
 with (root / "requests").open("a") as log:
     log.write("PUT\\n" if "PUT" in args else "OIDC\\n")
 if "PUT" in args:
+    (root / "url").write_text(args[args.index("PUT") + 1])
     (root / "payload.json").write_text(sys.stdin.read())
-    Path(args[args.index("-o") + 1]).write_text(
-        '{"space":"prod","variables":1,"secrets":2,"restarted":0}')
-    print("200", end="")
+    Path(args[args.index("-o") + 1]).write_text(os.environ.get(
+        "SYNC_TEST_BODY", '{"space":"prod","variables":1,"secrets":2,"restarted":0}'))
+    print(os.environ.get("SYNC_TEST_CODE", "200"), end="")
 else:
     print('{"value":"dummy-oidc-token"}')
 '''
@@ -38,7 +39,7 @@ class SyncTests(unittest.TestCase):
         curl.write_text(CURL_STUB)
         curl.chmod(0o755)
 
-    def run_sync(self, secrets):
+    def run_sync(self, secrets, api="https://api.example.invalid", extra=None, shell=("bash",)):
         env = dict(os.environ)
         env.update(
             PATH=str(self.root) + os.pathsep + env["PATH"],
@@ -46,12 +47,15 @@ class SyncTests(unittest.TestCase):
             INFERRA_SPACE="prod",
             INFERRA_VARS='{"LOG_LEVEL":"info"}',
             INFERRA_SECRETS=secrets,
-            INFERRA_API="https://api.example.invalid",
+            INFERRA_API=api,
             ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example.invalid?job=1",
             ACTIONS_ID_TOKEN_REQUEST_TOKEN="dummy-request-token",
         )
+        env.update(extra or {})
+        if api is None:
+            env.pop("INFERRA_API")
         return subprocess.run(
-            ["bash", str(SCRIPT)], env=env, capture_output=True, text=True
+            [*shell, str(SCRIPT)], env=env, capture_output=True, text=True
         )
 
     def assert_rejected(self, secrets, message):
@@ -116,6 +120,78 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(
             json.loads((self.root / "payload.json").read_text())["secrets"], {}
         )
+
+    def test_empty_api_url_means_production(self):
+        result = self.run_sync("{}", api="")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            (self.root / "url").read_text(), "https://api.inferralab.com/v1/github/env"
+        )
+
+    def test_explicit_api_url_is_used(self):
+        self.run_sync("{}", api="https://api.dev.example.invalid/")
+        self.assertEqual(
+            (self.root / "url").read_text(), "https://api.dev.example.invalid/v1/github/env"
+        )
+
+    def test_unset_api_url_means_production_too(self):
+        result = self.run_sync("{}", api=None)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            (self.root / "url").read_text(), "https://api.inferralab.com/v1/github/env"
+        )
+
+    def test_xtrace_never_prints_secrets(self):
+        sentinel = "SENTINEL-secret-value-123"
+        for shell in (("bash", "-x"), ("bash", "-o", "xtrace")):
+            result = self.run_sync(
+                json.dumps({"KEY": sentinel}),
+                extra={"SHELLOPTS": "xtrace"} if shell == ("bash", "-x") else None,
+                shell=shell,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn(sentinel, result.stdout + result.stderr)
+
+    def test_conflicts_print_names_only(self):
+        body = '{"space":"prod","variables":1,"secrets":1,"restarted":0,"conflicts":["OWNED","B_2"]}'
+        result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("already set in Inferra: OWNED, B_2.", result.stdout)
+
+    def test_conflicts_with_values_or_objects_print_nothing_beyond_names(self):
+        body = json.dumps({"space": "prod", "variables": 1, "secrets": 1, "restarted": 0,
+                           "conflicts": ["OK_NAME", "has space", "lower", "x=SENTINEL-value",
+                                         {"name": "SENTINEL-obj"}, 5, None, "A\n::error::boom"]})
+        result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("already set in Inferra: OK_NAME.", result.stdout)
+        self.assertNotIn("SENTINEL", result.stdout + result.stderr)
+        self.assertNotIn("boom", result.stdout + result.stderr)
+
+    def test_conflict_names_are_capped(self):
+        names = ["N%d" % i for i in range(50)]
+        body = json.dumps({"space": "prod", "variables": 1, "secrets": 1, "restarted": 0, "conflicts": names})
+        result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body})
+        self.assertIn("N19", result.stdout)
+        self.assertNotIn("N20", result.stdout)
+
+    def test_error_response_prints_fixed_text_only(self):
+        for code, fragment in (("400", "invalid"), ("401", "authentication"), ("403", "authentication"),
+                               ("409", "conflicts"), ("413", "too large"), ("503", "server error"), ("418", "unexpected")):
+            body = json.dumps({"title": "SENTINEL-title", "detail": "SENTINEL-secret-123",
+                               "secrets": {"K": "SENTINEL-value"}})
+            result = self.run_sync("{}", extra={"SYNC_TEST_BODY": body, "SYNC_TEST_CODE": code})
+            self.assertNotEqual(result.returncode, 0)
+            text = result.stdout + result.stderr
+            self.assertIn("(HTTP %s): " % code, text)
+            self.assertIn(fragment, text)
+            self.assertNotIn("SENTINEL", text)
+            self.assertEqual(text.count("::error::"), 1)
+
+    def test_non_json_error_body_is_not_echoed(self):
+        result = self.run_sync("{}", extra={"SYNC_TEST_BODY": "SENTINEL-html-page", "SYNC_TEST_CODE": "502"})
+        self.assertNotIn("SENTINEL", result.stdout + result.stderr)
+        self.assertIn("(HTTP 502)", result.stdout)
 
 
 if __name__ == "__main__":

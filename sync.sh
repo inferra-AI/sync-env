@@ -4,7 +4,14 @@
 # Identity: a GitHub Actions OIDC token (audience "inferra") proves which
 # repository, environment and commit this run is; Inferra checks it against
 # GitHub's published keys. Nothing here stores or prints a credential.
+# Never trace: `bash -x`, SHELLOPTS=xtrace or a debug wrapper would print the
+# secrets this script handles. Off before anything sensitive is read.
+set +x
+set +o xtrace
 set -euo pipefail
+
+# An empty api-url means the production API.
+INFERRA_API=${INFERRA_API:-https://api.inferralab.com}
 
 : "${INFERRA_SPACE:?space is required}"
 if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
@@ -54,9 +61,28 @@ trap 'rm -f "$out"' EXIT
 code=$(curl -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
   -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" --data-binary @- <<<"$body")
 
+# Nothing from an error response is ever printed: its text could carry a
+# value. Only the numeric status and a fixed sentence per status.
 if [[ "$code" != 2* ]]; then
-  # The API's problem+json never contains values; show its explanation.
-  echo "::error::Inferra refused the sync (HTTP $code): $(jq -r '.detail // .title // "unknown error"' "$out" 2>/dev/null)"
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  case "$code" in
+    400|422) why="the request was invalid; check the variable and secret names and sizes" ;;
+    401|403) why="authentication failed; check 'permissions: id-token: write', the Environment name, and that this repository is an installed Inferra org" ;;
+    404) why="the space or repository was not found; check the Environment name matches a space" ;;
+    409) why="the sync conflicts with current state (an older or repeated run, or a value managed elsewhere)" ;;
+    413) why="the request is too large" ;;
+    429) why="too many syncs; retry in a minute" ;;
+    5??) why="Inferra had a server error; re-run the workflow" ;;
+    *) why="unexpected response" ;;
+  esac
+  echo "::error::Inferra refused the sync (HTTP $code): $why."
   exit 1
 fi
-jq -r '"Synced to space \(.space): \(.variables) variables, \(.secrets) secrets\(if .restarted > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || echo "Synced."
+summary=$(jq -r --arg space "$INFERRA_SPACE" '"Synced to space \($space): \(.variables | numbers) variables, \(.secrets | numbers) secrets\(if (.restarted | numbers) > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || true)
+echo "${summary:-Synced.}"
+# One owner per secret: names Inferra did not overwrite because they were set
+# in Inferra. Only strings shaped like a secret name are printed, at most 20.
+conflicts=$(jq -r '[.conflicts[]? | select(type == "string" and test("^[A-Z_][A-Z0-9_]{0,127}$"))] | .[0:20] | join(", ")' "$out" 2>/dev/null || true)
+if [[ -n "$conflicts" ]]; then
+  echo "::warning::Not overwritten, already set in Inferra: $conflicts. Run 'inferra secrets rm APP NAME' to let GitHub own it, or remove it from this workflow's secrets."
+fi
