@@ -23,7 +23,9 @@ jobs:
         space: [prod, stage, preview]   # Use the spaces from .inferra/org.yaml.
     environment: ${{ matrix.space }}
     steps:
-      - uses: inferra-ai/sync-env@8f6330a7af3dd02ffb6c103081d43050804b3b38 # v1.0.2
+      # Pin the full commit SHA of the release tag (v1.0.5 once tagged; replace the
+      # placeholder with `git rev-parse v1.0.5`).
+      - uses: inferra-ai/sync-env@<SHA-OF-v1.0.5> # v1.0.5
         with:
           space: ${{ matrix.space }}
           variables: ${{ toJSON(vars) }}

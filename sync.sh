@@ -4,6 +4,10 @@
 # Identity: a GitHub Actions OIDC token (audience "inferra") proves which
 # repository, environment and commit this run is; Inferra checks it against
 # GitHub's published keys. Nothing here stores or prints a credential.
+# Never trace: `bash -x`, SHELLOPTS=xtrace or a debug wrapper would print the
+# secrets this script handles. Off before anything sensitive is read.
+set +x
+set +o xtrace
 set -euo pipefail
 
 # An empty api-url means the production API.
@@ -57,15 +61,20 @@ trap 'rm -f "$out"' EXIT
 code=$(curl -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
   -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" --data-binary @- <<<"$body")
 
+# Nothing from the response body is echoed raw: only a numeric status, and
+# strings reduced to a safe alphabet and length. A response can carry anything.
+safe='gsub("[^A-Za-z0-9 ._,;()/'"'"'-]"; "") | .[0:200]'
 if [[ "$code" != 2* ]]; then
-  # The API's problem+json never contains values; show its explanation.
-  echo "::error::Inferra refused the sync (HTTP $code): $(jq -r '.detail // .title // "unknown error"' "$out" 2>/dev/null)"
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  explanation=$(jq -r "[(.title // empty), (.detail // empty)] | map(select(type == \"string\") | $safe) | join(\" - \")" "$out" 2>/dev/null || true)
+  echo "::error::Inferra refused the sync (HTTP $code): ${explanation:-unknown error}"
   exit 1
 fi
-jq -r '"Synced to space \(.space): \(.variables) variables, \(.secrets) secrets\(if .restarted > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || echo "Synced."
+summary=$(jq -r --arg space "$INFERRA_SPACE" '"Synced to space \($space): \(.variables | numbers) variables, \(.secrets | numbers) secrets\(if (.restarted | numbers) > 0 then ", restarted \(.restarted) apps" else "" end)."' "$out" 2>/dev/null || true)
+echo "${summary:-Synced.}"
 # One owner per secret: names Inferra did not overwrite because they were set
-# in Inferra (names only).
-conflicts=$(jq -c '(.conflicts // []) | select(length > 0)' "$out" 2>/dev/null || true)
+# in Inferra. Only strings shaped like a secret name are printed, at most 20.
+conflicts=$(jq -r '[.conflicts[]? | select(type == "string" and test("^[A-Z_][A-Z0-9_]{0,127}$"))] | .[0:20] | join(", ")' "$out" 2>/dev/null || true)
 if [[ -n "$conflicts" ]]; then
   echo "::warning::Not overwritten, already set in Inferra: $conflicts. Run 'inferra secrets rm APP NAME' to let GitHub own it, or remove it from this workflow's secrets."
 fi
