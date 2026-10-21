@@ -114,6 +114,17 @@ class SyncTests(unittest.TestCase):
         for value in [*selected.values(), "never-send-lower", "never-send-upper"]:
             self.assertNotIn(value, result.stdout + result.stderr)
 
+    def test_reserved_variable_names_are_not_sent(self):
+        result = self.run_sync("{}", extra={"INFERRA_VARS": json.dumps({
+            "LOG_LEVEL": "info", "INFERRA_API_URL": "https://api.dev.example.invalid",
+            "PORT": "9000", "KUBERNETES_X": "y", "RUNNER_LABELS": '"self-hosted"',
+        })})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads((self.root / "payload.json").read_text())
+        self.assertEqual(payload["variables"], {"LOG_LEVEL": "info", "RUNNER_LABELS": '"self-hosted"'})
+        self.assertIn("INFERRA_API_URL", result.stdout)
+        self.assertNotIn("api.dev.example.invalid", result.stdout + result.stderr)
+
     def test_empty_mapping_is_sent_for_replacement(self):
         result = self.run_sync("{}")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

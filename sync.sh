@@ -29,6 +29,16 @@ if ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$secrets_json"; then
   exit 1
 fi
 
+# toJSON(vars) also carries organisation and repository variables, such as
+# INFERRA_API_URL. Names the platform sets itself (PORT, INFERRA_*,
+# KUBERNETES_*) would make Inferra refuse the whole sync, so leave them out
+# (names only in the notice).
+reserved_vars=$(jq -c '[keys[] | select(. == "PORT" or startswith("INFERRA_") or startswith("KUBERNETES_"))]' <<<"$vars_json")
+if [[ "$reserved_vars" != '[]' ]]; then
+  echo "::notice::Not sent, set by Inferra itself: $reserved_vars"
+  vars_json=$(jq -c 'with_entries(select(.key != "PORT" and (.key | startswith("INFERRA_") | not) and (.key | startswith("KUBERNETES_") | not)))' <<<"$vars_json")
+fi
+
 # A secret listed in the workflow but not set in this Environment arrives as
 # null (toJSON of an unset secret) or "". Skip it (names only in the warning):
 # sending it would store an empty value, and leaving it out mirrors GitHub,
