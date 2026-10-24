@@ -12,6 +12,10 @@ set -euo pipefail
 
 # An empty api-url means the production API.
 INFERRA_API=${INFERRA_API:-https://api.inferralab.com}
+if [[ "$INFERRA_API" != [hH][tT][tT][pP][sS]://* ]]; then
+  echo "::error::api-url must use HTTPS to protect credentials and secrets."
+  exit 1
+fi
 
 : "${INFERRA_SPACE:?space is required}"
 if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
@@ -57,7 +61,7 @@ if [[ "$invalid_secrets" != '[]' ]]; then
 fi
 
 # The OIDC token for Inferra.
-oidc=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+oidc=$(curl --proto '=https' -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
   "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${INFERRA_AUDIENCE:-inferra}" | jq -r .value)
 echo "::add-mask::$oidc"
 
@@ -68,7 +72,7 @@ body=$(jq -n --arg space "$INFERRA_SPACE" \
 
 out=$(mktemp)
 trap 'rm -f "$out"' EXIT
-code=$(curl -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
+code=$(curl --proto '=https' -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
   -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" --data-binary @- <<<"$body")
 
 # Nothing from an error response is ever printed: its text could carry a
