@@ -10,6 +10,14 @@ set +x
 set +o xtrace
 set -euo pipefail
 
+# Per-request limits in seconds; override with positive integer environment settings.
+INFERRA_CONNECT_TIMEOUT=${INFERRA_CONNECT_TIMEOUT:-10}
+INFERRA_MAX_TIME=${INFERRA_MAX_TIME:-60}
+if [[ ! "$INFERRA_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ || ! "$INFERRA_MAX_TIME" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::Connection and request timeouts must be positive integer seconds."
+  exit 1
+fi
+
 # An empty api-url means the production API.
 INFERRA_API=${INFERRA_API:-https://api.inferralab.com}
 if [[ "$INFERRA_API" != [hH][tT][tT][pP][sS]://* ]]; then
@@ -61,7 +69,8 @@ if [[ "$invalid_secrets" != '[]' ]]; then
 fi
 
 # The OIDC token for Inferra.
-oidc=$(curl --proto '=https' -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+oidc=$(curl -q --connect-timeout "$INFERRA_CONNECT_TIMEOUT" --max-time "$INFERRA_MAX_TIME" \
+  --proto '=https' -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
   "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${INFERRA_AUDIENCE:-inferra}" | jq -r .value)
 echo "::add-mask::$oidc"
 
@@ -72,7 +81,8 @@ body=$(jq -n --arg space "$INFERRA_SPACE" \
 
 out=$(mktemp)
 trap 'rm -f "$out"' EXIT
-code=$(curl --proto '=https' -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
+code=$(curl -q --connect-timeout "$INFERRA_CONNECT_TIMEOUT" --max-time "$INFERRA_MAX_TIME" \
+  --proto '=https' -sS -o "$out" -w '%{http_code}' -X PUT "${INFERRA_API%/}/v1/github/env" \
   -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" --data-binary @- <<<"$body")
 
 # Nothing from an error response is ever printed: its text could carry a
